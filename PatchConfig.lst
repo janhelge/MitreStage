@@ -1,0 +1,3 @@
+../OpenID-Connect-Java-Spring-Server/openid-connect-server-webapp/src/main/webapp/WEB-INF/crypto-config.xml
+../OpenID-Connect-Java-Spring-Server/openid-connect-server-webapp/src/main/webapp/WEB-INF/data-context.xml
+../OpenID-Connect-Java-Spring-Server/openid-connect-server-webapp/src/main/resources/db/psql/psql_database_tables.sql
