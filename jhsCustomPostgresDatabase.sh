@@ -3,6 +3,7 @@
 # eyJraWQiOiJyc2ExIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiJhZG1pbiIsImF6cCI6ImNsaWVudCIsImlzcyI6Imh0dHA6XC9cL2xvY2FsaG9zdDo4MDgwXC9vcGVuaWQtY29ubmVjdC1zZXJ2ZXItd2ViYXBwXC8iLCJleHAiOjE1MDA5MTU2OTYsImlhdCI6MTUwMDkxMjA5NiwianRpIjoiOGI1OWE1ZTItZTBiMS00MWJiLWI3YjItNWQyNGM2MzBmNWJiIn0.VtZo_dtP9dWLv8Quepkabn-3Lq27KQ-_f0S6tuCUk69y0apf59hVg0NuhtX6dq-pMIaE26wyb03lNqtKz8z8Zn4SP4JtfYaADbjVE5Uxsgkb33mNYPqxCxeDrZ_PUYhuRYC7BbTs-C3Ys1JvMrIsSvpuvK3R1ND3UoKZQaOsNd4GgI3TWnuAol6K4K7egSv8O3srN3jKVpd_EhXWLw2BMFRvrnNwybTMxSN_QnUuaFH4T7FWwXe-lOafmBSLjtskyrcza_CIdJU46zAhcYKS50K5T007rnOn91HdbRtn1Cy0k7rPCLf7zrF74KkltWCkEIUW5C8gCU3JgHTifUiY1A
 #
 #
+UserName=jhs009
 
 Doit(){
 
@@ -13,6 +14,10 @@ Doit(){
 	# InkrEnAuth; InkrEnAuth # Pga to adresser 
 	PatchToAfterTwoGrants
 
+}
+
+DumpDb(){
+	pg_dump --no-owner --file oic.sql oic
 }
 
 PatchToAfterTwoGrants(){
@@ -35,10 +40,10 @@ InkrEnAuth(){
 	for s in $(echo $seqs|sort); do echo Bumping sequence $s to: $(NxtVal $s oic); done
 }
 SetVal(){
-	psql --tuples-only --username=jhs --dbname=$3 -c "select setval('$1',$2);"; 
+	psql --tuples-only --username=$UserName --dbname=$3 -c "select setval('$1',$2);"; 
 }
 NxtVal(){ 
-	psql --tuples-only --username=jhs \
+	psql --tuples-only --username=$UserName \
 	--dbname=$2 -c "select nextval('$1'::regclass);"; 
 }
 
@@ -47,17 +52,17 @@ SequenceStatus(){
 	local s="select 'select '''|| relname ||':''|| last_value"
 	s="$s from '||relname||';'"
 	s="$s from pg_class where relkind='S';"
-	psql --tuples-only --username=jhs --dbname=$dbname -c "$s"|\
-	psql --tuples-only --username=jhs --dbname=$dbname|\
+	psql --tuples-only --username=$UserName --dbname=$dbname -c "$s"|\
+	psql --tuples-only --username=$UserName --dbname=$dbname|\
 	sort -u
 }
 
 TellRader(){
 	local dbname=oic
-        psql --tuples-only --username=jhs --dbname=$dbname -c "
+        psql --tuples-only --username=$UserName --dbname=$dbname -c "
 	select 'select ~'||table_name||': ~||count(*) from '||table_name||';' from information_schema.tables WHERE 
 	table_schema='public' AND table_type='BASE TABLE'"|tr "~" "'"|\
-	psql --tuples-only --username=jhs --dbname=$dbname|sort -n -k 2
+	psql --tuples-only --username=$UserName --dbname=$dbname|sort -n -k 2
 }
 CreatePlainDistroDb(){
 	# MakeKeyStore
@@ -83,7 +88,7 @@ CreateDatabaseTablesAndSecuritySchema(){
         t="$t psql_database_tables.sql.patch-address-id-as-bigserial"
         t="$t ../OpenID-Connect-Java-Spring-Server/openid-connect-server-webapp/src/main/resources/db/psql/psql_database_index.sql"
         t="$t ../OpenID-Connect-Java-Spring-Server/openid-connect-server-webapp/src/main/resources/db/psql/security-schema.sql"
-	cat $t| psql --username=jhs --dbname=$1 
+	cat $t| psql --username=$UserName --dbname=$1 
 }
 Scopes(){
 	cat<<-! | psql $1
@@ -118,8 +123,8 @@ admin_addr_id=$(NxtVal user_info_address_id_seq $dbname)
 user_user_info_id=$(NxtVal user_info_id_seq $dbname)
 user_addr_id=$(NxtVal user_info_address_id_seq $dbname)
 
-# user_user_info_id=$(psql --tuples-only --username=jhs --dbname=$dbname -c "select nextval('user_info_id_seq'::regclass)")
-# user_addr_id=$(psql --tuples-only --username=jhs --dbname=$dbname -c "select nextval('user_info_address_id_seq'::regclass)")
+# user_user_info_id=$(psql --tuples-only --username=$UserName --dbname=$dbname -c "select nextval('user_info_id_seq'::regclass)")
+# user_addr_id=$(psql --tuples-only --username=$UserName --dbname=$dbname -c "select nextval('user_info_address_id_seq'::regclass)")
 
 	echo admin: user_info_id: $admin_user_info_id admin_addr_id=$admin_addr_id
 	echo user: user_info_id: $user_user_info_id user_addr_id=$user_addr_id
@@ -150,8 +155,8 @@ Clients(){
 	local dbname=$1
 	local clientId=
 	local myspringsecId=
-	clientId=$(psql --tuples-only --username=jhs --dbname=$dbname -c "select nextval('client_details_id_seq'::regclass)")
-	myspringsecId=$(psql --tuples-only --username=jhs --dbname=$dbname -c "select nextval('client_details_id_seq'::regclass)")
+	clientId=$(psql --tuples-only --username=$UserName --dbname=$dbname -c "select nextval('client_details_id_seq'::regclass)")
+	myspringsecId=$(psql --tuples-only --username=$UserName --dbname=$dbname -c "select nextval('client_details_id_seq'::regclass)")
 	echo clientId=$clientId myspringsecId=$myspringsecId
 	# NullstillClients_details_scope_redirects_grants # Trengs bare for omkjoring
 	cat <<-! | psql $dbname
@@ -200,25 +205,25 @@ CreateAccessUserAndGrantAll(){
 	# echo Connect med ...
 	# echo psql --username=oic --password --host=localhost --dbname=oic
 
-	psql --tuples-only --username=jhs --dbname=$dbname -c "SELECT 'grant select,update,delete,insert on '
+	psql --tuples-only --username=$UserName --dbname=$dbname -c "SELECT 'grant select,update,delete,insert on '
 		|| table_name||' to $username;'
 		FROM information_schema.tables WHERE table_schema='public'
 		AND table_type='BASE TABLE'"|\
-	psql --tuples-only --username=jhs --dbname=$dbname
+	psql --tuples-only --username=$UserName --dbname=$dbname
 
-	psql --tuples-only --username=jhs --dbname=$dbname -c "SELECT 'grant select,usage on '
+	psql --tuples-only --username=$UserName --dbname=$dbname -c "SELECT 'grant select,usage on '
 	|| c.relname ||' to $username;' 
 	from pg_class c 
 	  join pg_namespace n on n.oid = c.relnamespace
 	  join pg_user u on u.usesysid = c.relowner
 	where c.relkind = 'S'
 	  and u.usename = current_user"|\
-	psql --tuples-only --username=jhs --dbname=oic
+	psql --tuples-only --username=$UserName --dbname=oic
 }
 ### =======================   <=== Krimstad
 KrimstadAsUsers(){
 	ImporterePersonTabellFraKrimstad
-	psql --tuples-only --username=jhs --dbname=oic -c "grant select,update,delete,insert on personer to oic;"
+	psql --tuples-only --username=$UserName --dbname=oic -c "grant select,update,delete,insert on personer to oic;"
 
 	cat<<-! | psql oic
 	START TRANSACTION;
@@ -283,7 +288,7 @@ KrimstadUsersPhoneNumberVerifiedFixup(){
 ## ===================================   <== Gamle funksjoner
 # CreateScopes(){
 # local t=../OpenID-Connect-Java-Spring-Server/openid-connect-server-webapp/src/main/resources/db/psql/scopes.sql
-# cat $t |psql --username=jhs --dbname=oic
+# cat $t |psql --username=$UserName --dbname=oic
 # }
 NullstillClients_details_scope_redirects_grants(){
 	psql --dbname oic -c "delete from client_details"
@@ -310,11 +315,11 @@ GenerateKeysAndReplace(){
 }
 DropTempTables(){
 	local dbname=oic
-        psql --tuples-only --username=jhs --dbname=$dbname -c "
+        psql --tuples-only --username=$UserName --dbname=$dbname -c "
 	select 'drop table '||table_name||';' from information_schema.tables WHERE 
 	table_schema='public' AND table_type='BASE TABLE' and table_name like '%temp'"|\
-        psql --tuples-only --username=jhs --dbname=$dbname
+        psql --tuples-only --username=$UserName --dbname=$dbname
 }
 
-# CreateTempTablesForInnlesning(){ psql --username=jhs --dbname=oic --file create-temp-tables.sql; }
+# CreateTempTablesForInnlesning(){ psql --username=$UserName --dbname=oic --file create-temp-tables.sql; }
 Doit
