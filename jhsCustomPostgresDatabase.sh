@@ -1,21 +1,31 @@
 #!/bin/sh
-# Sjekk paa https://jwt.io/
-# eyJraWQiOiJyc2ExIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiJhZG1pbiIsImF6cCI6ImNsaWVudCIsImlzcyI6Imh0dHA6XC9cL2xvY2FsaG9zdDo4MDgwXC9vcGVuaWQtY29ubmVjdC1zZXJ2ZXItd2ViYXBwXC8iLCJleHAiOjE1MDA5MTU2OTYsImlhdCI6MTUwMDkxMjA5NiwianRpIjoiOGI1OWE1ZTItZTBiMS00MWJiLWI3YjItNWQyNGM2MzBmNWJiIn0.VtZo_dtP9dWLv8Quepkabn-3Lq27KQ-_f0S6tuCUk69y0apf59hVg0NuhtX6dq-pMIaE26wyb03lNqtKz8z8Zn4SP4JtfYaADbjVE5Uxsgkb33mNYPqxCxeDrZ_PUYhuRYC7BbTs-C3Ys1JvMrIsSvpuvK3R1ND3UoKZQaOsNd4GgI3TWnuAol6K4K7egSv8O3srN3jKVpd_EhXWLw2BMFRvrnNwybTMxSN_QnUuaFH4T7FWwXe-lOafmBSLjtskyrcza_CIdJU46zAhcYKS50K5T007rnOn91HdbRtn1Cy0k7rPCLf7zrF74KkltWCkEIUW5C8gCU3JgHTifUiY1A
-#
+# DOC: Inluderer naa også dsf-personer
 #
 UserName=jhs009
+UserName=jhs
 
 Doit(){
-
 	CreatePlainDistroDb
 	KrimstadAsUsers
+	DsfAsUsers
 	# TellRader
 	# SequenceStatus > sequenceStatus.txt; ls -l sequenceStatus.txt
 	# InkrEnAuth; InkrEnAuth # Pga to adresser 
 	PatchToAfterTwoGrants
+	CreateUserList| tr -d ' ' | sort -n > lists-of-users.txt; ls -ltrh lists-of-users.txt
+	# DropPersonAndDsfpersonTables # Sparer 1 Mb
 
 }
-
+CreateUserList(){ 
+	psql oic --tuples-only -c "select fodselsnr||';DSF;' from dsfpersoner order by fodselsnr"; 
+	psql oic --tuples-only -c "select fodselsnummer||';Krimstad;' from personer 
+	where fodselsnummer != '' order by fodselsnummer"; 
+}
+CreateUserListO(){ psql oic --tuples-only -c "select username from users order by username"; }
+DropPersonAndDsfpersonTables(){
+	psql oic -c "drop table if exists dsfpersoner"
+	psql oic -c "drop table if exists personer" 
+}
 DumpDb(){
 	pg_dump --no-owner --file oic.sql oic
 }
@@ -182,7 +192,8 @@ Clients(){
 
 		INSERT INTO client_redirect_uri (owner_id,redirect_uri) values 
 			($clientId, 'http://localhost:8081/simple-web-app/openid_connect_login'),
-			($myspringsecId, 'http://localhost:8082/oauth2/authorize/code/mitre'); 
+			($myspringsecId, 'http://localhost:8082/oauth2/authorize/code/mitre'), 
+			($myspringsecId, 'http://localhost:8082/kjoreseddel/oauth2/authorize/code/mitre'); 
 
 		INSERT INTO client_grant_type (owner_id,grant_type) values 
 			($clientId, 'authorization_code'),
@@ -220,8 +231,69 @@ CreateAccessUserAndGrantAll(){
 	  and u.usename = current_user"|\
 	psql --tuples-only --username=$UserName --dbname=oic
 }
+### =======================   <=== Dsf
+DsfAsUsers(){
+	ImporterePersonTabellFraDsf(){
+		psql --dbname oic -c "drop table if exists dsfpersoner";
+		psql --file Dsf_personer.sql --dbname oic|sort -u
+		psql --dbname oic --tuples-only -c "select 'Antall personer med personnummer i Dsf persontabellen: '
+			||count(*) from dsfpersoner where fodselsnr is not null and fodselsnr != ''";
+	}
+	ImporterePersonTabellFraDsf # ImporterePersonTabellFraKrimstad
+	psql --tuples-only --username=$UserName --dbname=oic -c "grant select,update,delete,insert on dsfpersoner to oic;"
+
+	cat<<-! | psql oic
+	START TRANSACTION;
+
+	insert into users select fodselsnr as username, 'password' as password, true as enabled 
+	from dsfpersoner where fodselsnr is not null and fodselsnr not like '';
+
+	insert into authorities select fodselsnr as username, 'ROLE_USER' as authority 
+	from dsfpersoner where fodselsnr is not null and fodselsnr not like '';
+
+	delete from user_info where id in (select fodselsnr::bigint from dsfpersoner where fodselsnr is not null and fodselsnr not like '');
+	delete from address where id in (select fodselsnr::bigint from dsfpersoner where fodselsnr is not null and fodselsnr not like '');
+
+	insert into user_info (id,sub,preferred_username,name,email,email_verified,address_id,gender,phone_number,phone_number_verified,
+		given_name,middle_name,nickname,family_name) select 
+                fodselsnr::bigint as id, 
+                'fodselsnummer.'||fodselsnr as sub,
+                fodselsnr as preferred_username, 
+                fornavn||' '||(case when length(mellomnavn)>0 then mellomnavn||' ' else '' end)||slektsnavn_ugift as name, 
+                fodselsnr||'@fake.epost.com' as email, 
+                false as email_verified, 
+                fodselsnr::bigint as address_id,
+                'U' as gender,
+                1 as phone_number,
+                true as phone_number_verified,
+                fornavn as given_name,
+                mellomnavn as middle_name,
+                fornavn as nickname,
+                slektsnavn as family_name
+        from dsfpersoner where fodselsnr is not null and fodselsnr != '';
+
+	insert into address (id,street_address,locality,formatted,region,country,postal_code) select 
+                fodselsnr::bigint as id,
+                trim(trim(adresse1)||' '||trim(adresse2)||' '||trim(adresse3)) as street_address,
+                'dsf-sted' as locality,
+                'placeholder-formatted' as formatted,
+                'placeholder-region' as region,
+                'placeholder-country' as country,
+                postnummer as postal_code
+        from dsfpersoner where fodselsnr is not null and fodselsnr != '';
+	commit;
+	!
+	KrimstadUsersPhoneNumberVerifiedFixup
+}
+### =======================   <=== Dsf
 ### =======================   <=== Krimstad
 KrimstadAsUsers(){
+	ImporterePersonTabellFraKrimstad(){
+		psql --dbname oic -c "drop table if exists personer";
+		psql --file Krimstad_personer.sql --dbname oic|sort -u
+		psql --dbname oic --tuples-only -c "select 'Antall personer med personnummer i Krimstad persontabellen: '
+			||count(*) from personer where fodselsnummer is not null and fodselsnummer != ''";
+	}
 	ImporterePersonTabellFraKrimstad
 	psql --tuples-only --username=$UserName --dbname=oic -c "grant select,update,delete,insert on personer to oic;"
 
@@ -269,12 +341,7 @@ KrimstadAsUsers(){
 	!
 	KrimstadUsersPhoneNumberVerifiedFixup
 }
-ImporterePersonTabellFraKrimstad(){
-	psql --dbname oic -c "drop table if exists personer";
-	psql --file Krimstad_personer.sql --dbname oic|sort -u
-	psql --dbname oic --tuples-only -c "select 'Antall personer med personnummer i Krimstad persontabellen: '
-		||count(*) from personer where fodselsnummer is not null and fodselsnummer != ''";
-}
+### =======================   <=== Krimstad
 KrimstadUsersPhoneNumberVerifiedFixup(){
 # select 90000000+id%10000 from user_info where id=13051299668
 	# psql --dbname oic --tuples-only -c "update user_info set 
@@ -283,6 +350,7 @@ KrimstadUsersPhoneNumberVerifiedFixup(){
 	update user_info set phone_number_verified=false, phone_number = 90000000+id%10000
 		where phone_number is null or phone_number != '' and id > 1000000"; 
 }
+Doit
 
 
 ## ===================================   <== Gamle funksjoner
@@ -322,4 +390,3 @@ DropTempTables(){
 }
 
 # CreateTempTablesForInnlesning(){ psql --username=$UserName --dbname=oic --file create-temp-tables.sql; }
-Doit

@@ -6,11 +6,12 @@ DockerImage(){
         local dir=tmp$$
         local saveTo=/dockerimages/
         mkdir $dir
-	pg_dump --no-owner oic| grep -v jhs009|gzip -9 > $dir/dump-oicdb.sql.gz
+	pg_dump --no-owner oic| grep -v jhs|gzip -9 > $dir/dump-oicdb.sql.gz
         # cp dump.sql.gz $dir
         # cp tmp-dumps/dump-*.sql.gz $dir
         cat <<-! > $dir/Dockerfile
-                FROM postgres:9.6.3-alpine
+                # FROM postgres:9.6.3-alpine
+                FROM postgres:11-beta1-alpine
                 COPY dump-*.sql.gz /docker-entrypoint-initdb.d/
 	!
         (cd $dir; docker build -t oidcdb .)

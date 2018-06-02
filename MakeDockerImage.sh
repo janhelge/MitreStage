@@ -13,7 +13,7 @@ MakeDockerTarContext(){
 	local war=openid-connect-server-webapp.war
 	if [ ! -f ${warFrom}/$war ];then echo Feil, Bygg $war forst; exit 1; fi
 	cp ${warFrom}$war $war
-	# local deploy="$deploy $war"
+	local deploy="$deploy $war"
 	# deploy="$deploy oidc.xml"
 	# local logback=logback-test.xml  
 

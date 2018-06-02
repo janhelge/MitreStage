@@ -46,7 +46,11 @@ RunBoth(){
 	DbStart
 	WaitOnDatabase oidcdb # Venter til databasen kommer opp slik at databaseinitialisering ikke feiler
 	# Kan ikke ha --link i kombinasjon med --net host, maa derfor bruke db PrivateLinking
-	docker run -d -p 8080:8080 --add-host oidcdb:$(ContainerIp oidcdb) --name oidc oidc:latest 
+	HostName=$(hostname -f);
+	HostName=localhost
+	IssuerUrl=http://$HostName:8080/openid-connect-server-webapp/ # DOCKER-TEST-001.pit-test.no, // FIXME
+	echo IssuerUrl=$IssuerUrl
+	docker run -d -p 8080:8080 --add-host oidcdb:$(ContainerIp oidcdb) -e ISSUER=$IssuerUrl --name oidc oidc:latest 
 	#                          T------------PrivateLinking-----------T           
 }
 
